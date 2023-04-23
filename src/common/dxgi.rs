@@ -1,11 +1,11 @@
 use dxgi;
+use std::io::ErrorKind::{NotFound, TimedOut, WouldBlock};
 use std::{io, ops};
-use std::io::ErrorKind::{WouldBlock, TimedOut, NotFound};
 
 pub struct Capturer {
     inner: dxgi::Capturer,
     width: usize,
-    height: usize
+    height: usize,
 }
 
 impl Capturer {
@@ -13,7 +13,11 @@ impl Capturer {
         let width = display.width();
         let height = display.height();
         let inner = dxgi::Capturer::new(&display.0)?;
-        Ok(Capturer { inner, width, height })
+        Ok(Capturer {
+            inner,
+            width,
+            height,
+        })
     }
 
     pub fn width(&self) -> usize {
@@ -28,19 +32,23 @@ impl Capturer {
         const MILLISECONDS_PER_FRAME: u32 = 0;
         match self.inner.frame(MILLISECONDS_PER_FRAME) {
             Ok(frame) => Ok(Frame(frame)),
-            Err(ref error) if error.kind() == TimedOut => {
-                Err(WouldBlock.into())
-            },
-            Err(error) => Err(error)
+            Err(ref error) if error.kind() == TimedOut => Err(WouldBlock.into()),
+            Err(error) => Err(error),
         }
     }
 }
 
-pub struct Frame<'a>(&'a [u8]);
+pub struct Frame<'a>(&'a mut [u8]);
 
 impl<'a> ops::Deref for Frame<'a> {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
+        self.0
+    }
+}
+
+impl<'a> ops::DerefMut for Frame<'a> {
+    fn deref_mut(&mut self) -> &mut [u8] {
         self.0
     }
 }
@@ -51,14 +59,12 @@ impl Display {
     pub fn primary() -> io::Result<Display> {
         match dxgi::Displays::new()?.next() {
             Some(inner) => Ok(Display(inner)),
-            None => Err(NotFound.into())
+            None => Err(NotFound.into()),
         }
     }
 
     pub fn all() -> io::Result<Vec<Display>> {
-        Ok(dxgi::Displays::new()?
-            .map(Display)
-            .collect::<Vec<_>>())
+        Ok(dxgi::Displays::new()?.map(Display).collect::<Vec<_>>())
     }
 
     pub fn width(&self) -> usize {
